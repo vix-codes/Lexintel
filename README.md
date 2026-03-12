@@ -193,6 +193,5 @@ This project is compatible with standard Next.js deployment targets (including F
 
 ## 📄 License
 
-No license file is currently defined in this repository.
-Add a `LICENSE` file if you plan to distribute this project publicly.
+WattWise is released under the **MIT License**.
 
