@@ -2,6 +2,25 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 
+type VerificationRequestRow = {
+  id: string;
+  userId: string;
+  documentType: string;
+  status: 'pending' | 'reviewed' | 'approved' | 'rejected';
+  createdAt: Date;
+  updatedAt: Date;
+  draftContent: string;
+  formInputs: unknown;
+  lawyerComments: unknown;
+  lawyerNotification: string;
+  type: 'document' | 'lawyer';
+};
+
+type RawComment = {
+  text?: unknown;
+  timestamp?: unknown;
+};
+
 function toTimestamp(date: Date) {
   const seconds = Math.floor(date.getTime() / 1000);
   return { seconds, nanoseconds: 0 };
@@ -32,7 +51,7 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     });
 
-    const mapped = requests.map((r) => ({
+    const mapped = requests.map((r: VerificationRequestRow) => ({
       id: r.id,
       userId: r.userId,
       documentType: r.documentType,
@@ -42,7 +61,7 @@ export async function GET() {
       draftContent: r.draftContent,
       formInputs: (r.formInputs as any) ?? {},
       lawyerComments: Array.isArray(r.lawyerComments)
-        ? (r.lawyerComments as Array<{ text?: unknown; timestamp?: unknown }>).map((c) => ({
+        ? (r.lawyerComments as RawComment[]).map((c: RawComment) => ({
             text: typeof c.text === 'string' ? c.text : '',
             timestamp: normalizeCommentTimestamp(c.timestamp),
           }))

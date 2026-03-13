@@ -1,7 +1,5 @@
 
 'use server';
-
-import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 
@@ -215,7 +213,7 @@ export const getUserProfiles = async (userIds: string[]): Promise<Record<string,
       select: { id: true, username: true },
     });
 
-    users.forEach((u) => {
+    users.forEach((u: { id: string; username: string | null }) => {
       profiles[u.id] = u.username || 'Unknown User';
     });
     return profiles;
@@ -237,8 +235,8 @@ type SerializedVerificationRequest = {
   createdAt: string;
   updatedAt: string;
   draftContent: string;
-  formInputs: Prisma.JsonValue;
-  lawyerComments: Prisma.JsonValue;
+  formInputs: unknown;
+  lawyerComments: unknown;
   lawyerNotification: string;
   type: 'document' | 'lawyer';
 };
@@ -251,8 +249,8 @@ type VerificationRequestRow = {
   createdAt: Date;
   updatedAt: Date;
   draftContent: string;
-  formInputs: Prisma.JsonValue;
-  lawyerComments: Prisma.JsonValue | null;
+  formInputs: unknown;
+  lawyerComments: unknown | null;
   lawyerNotification: string;
   type: 'document' | 'lawyer';
 };

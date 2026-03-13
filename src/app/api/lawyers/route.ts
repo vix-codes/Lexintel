@@ -1,11 +1,27 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
+type LawyerProfileRow = {
+  userId: string;
+  email: string;
+  name: string;
+  phone: string | null;
+  enrollmentNumber: string | null;
+  locationCity: string | null;
+  locationState: string | null;
+  specializations: string[];
+  experienceYears: number | null;
+  description: string | null;
+  isVerified: boolean;
+  rating: number | null;
+  source: string | null;
+};
+
 export async function GET() {
   try {
     const profiles = await prisma.lawyerProfile.findMany();
 
-    const lawyers = profiles.map((p) => ({
+    const lawyers = profiles.map((p: LawyerProfileRow) => ({
       id: p.userId,
       email: p.email,
       name: p.name,

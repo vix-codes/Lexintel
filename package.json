@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "postinstall": "prisma generate",
     "build": "next build",
     "start": "next start",
     "prisma:generate": "prisma generate",
@@ -16,6 +17,7 @@
     "@genkit-ai/next": "^1.25.0",
     "@hookform/resolvers": "^5.2.2",
     "@prisma/client": "^6.1.0",
+    "prisma": "^6.1.0",
     "@radix-ui/react-accordion": "^1.2.0",
     "@radix-ui/react-alert-dialog": "^1.1.1",
     "@radix-ui/react-avatar": "^1.1.11",
@@ -57,7 +59,6 @@
     "@types/node": "^20.14.9",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "prisma": "^6.1.0",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.5.4"
   }
