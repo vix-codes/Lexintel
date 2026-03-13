@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  LAWYER
+  ADMIN
+}
+
+enum VerificationType {
+  document
+  lawyer
+}
+
+enum VerificationStatus {
+  pending
+  reviewed
+  approved
+  rejected
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  username     String
+  role         UserRole  @default(USER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  activities          Activity[]
+  verificationRequests VerificationRequest[]
+  sessions            Session[]
+  approvedDrafts      ApprovedDraft[]
+  lawyerProfile       LawyerProfile?
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  subject   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+model VerificationRequest {
+  id                String              @id @default(cuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              VerificationType
+  documentType      String
+  draftContent      String
+  formInputs        Json
+  status            VerificationStatus  @default(pending)
+  lawyerComments    Json?
+  lawyerNotification String             @default("")
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+}
+
+model LawyerProfile {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email            String
+  name             String
+  phone            String?
+  enrollmentNumber String?
+  locationCity     String?
+  locationState    String?
+  specializations  String[]
+  experienceYears  Int?
+  description      String?
+  isVerified       Boolean  @default(false)
+  rating           Float?
+  source           String?  @default("internal")
+  createdAt        DateTime @default(now())
+}
+
+model ApprovedDraft {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  originalRequestId String
+  documentType      String
+  approvedContent   String
+  approvedAt        DateTime @default(now())
+}
+

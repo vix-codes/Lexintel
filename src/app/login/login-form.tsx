@@ -2,12 +2,11 @@
 'use client';
 
 import Link from 'next/link';
-import { AuthForm } from '@/firebase/auth/auth-form';
+import { AuthForm } from '@/components/auth-form';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Logo } from '@/components/icons';
-import type { ReactNode } from 'react';
 
-export default function LoginForm({ children }: { children: ReactNode }) {
+export default function LoginForm() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-background text-foreground">
         <div className="absolute top-6 left-6 flex items-center gap-3">

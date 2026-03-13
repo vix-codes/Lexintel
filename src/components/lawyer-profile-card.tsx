@@ -243,7 +243,7 @@ export function LawyerProfileCard() {
           <CardDescription>{cardDescription}</CardDescription>
         </CardHeader>
         <CardContent>
-            {user && <LawyerProfileForm userId={user.uid} userEmail={user.email!} />}
+            {user && <LawyerProfileForm userId={user.id} userEmail={user.email} />}
         </CardContent>
     </Card>
   )

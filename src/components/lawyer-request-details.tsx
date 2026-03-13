@@ -14,7 +14,6 @@ import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { approveRequest, addLawyerComment, rejectRequest } from '@/app/admin-actions';
-import { type WithId } from '@/firebase/firestore/use-collection';
 import { ScrollArea } from './ui/scroll-area';
 import { Loader2, User, Ban } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -34,19 +33,20 @@ import { Label } from './ui/label';
 import { Input } from './ui/input';
 
 type VerificationRequest = {
+  id: string;
   userId: string;
   documentType: string;
   status: 'pending' | 'reviewed' | 'approved' | 'rejected';
   createdAt: { seconds: number; nanoseconds: number };
   updatedAt?: { seconds: number; nanoseconds: number };
   draftContent: string;
-  formInputs: Record<string, any>;
+  formInputs: Record<string, unknown>;
   lawyerComments: { text: string; timestamp: { seconds: number, nanoseconds: number } }[];
   type?: 'document' | 'lawyer';
 };
 
 interface LawyerRequestDetailsProps {
-  request: WithId<VerificationRequest>;
+  request: VerificationRequest;
   username: string;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;

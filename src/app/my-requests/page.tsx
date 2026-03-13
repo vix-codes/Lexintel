@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
@@ -15,28 +14,32 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
 import Header from "@/components/header";
-import { ShieldQuestion, Edit, Send, Loader2, AlertTriangle } from "lucide-react";
+import { ShieldQuestion, Edit, Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { useCollection, type WithId } from "@/firebase/firestore/use-collection";
-import { collection, query, where, orderBy, getFirestore, doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { app } from "@/firebase/client";
 import { PreviouslyApprovedRequests } from "@/components/previously-approved-requests";
 import { documentTemplates } from "@/lib/data";
 import { cn } from "@/lib/utils";
 
+type TimestampLike = { seconds: number; nanoseconds: number };
+
 type VerificationRequest = {
+  id: string;
   userId: string;
   documentType: string;
-  status: "pending" | "reviewed" | "approved" | 'rejected';
-  createdAt: { seconds: number; nanoseconds: number; };
-  updatedAt: { seconds: number; nanoseconds: number; };
+  status: "pending" | "reviewed" | "approved" | "rejected";
+  createdAt: TimestampLike;
+  updatedAt: TimestampLike;
   draftContent: string;
   formInputs: Record<string, any>;
-  lawyerComments: { text: string; timestamp: { seconds: number; nanoseconds: number; } }[];
+  lawyerComments: { text: string; timestamp: TimestampLike }[];
   lawyerNotification: string;
-  type?: 'document' | 'lawyer';
+  type?: "document" | "lawyer";
+};
+
+type ApprovedVerificationRequest = VerificationRequest & {
+  status: "approved";
 };
 
 const statusConfig = {
@@ -53,16 +56,14 @@ function getDocumentLabel(docValue: string) {
     return template ? template.label : docValue.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
-
-function RequestCard({ request, onResubmit }: { request: WithId<VerificationRequest>, onResubmit: () => void }) {
+function RequestCard({ request, onResubmit }: { request: VerificationRequest; onResubmit: () => void }) {
   const { toast } = useToast();
   const [editingContent, setEditingContent] = useState(request.draftContent);
   const [isEditing, setIsEditing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const statusInfo = statusConfig[request.status];
+  const statusInfo = statusConfig[request.status as keyof typeof statusConfig];
   const documentLabel = getDocumentLabel(request.documentType);
-  const db = getFirestore(app);
 
   const handleResubmit = async () => {
     if (!editingContent.trim()) {
@@ -71,14 +72,20 @@ function RequestCard({ request, onResubmit }: { request: WithId<VerificationRequ
     }
     setIsSubmitting(true);
     try {
-      const requestRef = doc(db, 'verificationRequests', request.id);
-      await updateDoc(requestRef, {
-        draftContent: editingContent,
-        status: 'pending', // Reset status to pending
-        updatedAt: serverTimestamp(),
-        lawyerComments: [], // Clear old comments on resubmission
-        lawyerNotification: '', // Clear old notification
+      const res = await fetch('/api/verification-requests/resubmit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: request.id, draftContent: editingContent }),
       });
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        const description =
+          payload?.message || 'An unexpected error occurred while resubmitting.';
+        toast({ variant: "destructive", title: "Resubmission Failed", description });
+        setIsSubmitting(false);
+        return;
+      }
 
       toast({ title: "Resubmitted Successfully", description: "Your updated draft has been sent for review." });
       setIsEditing(false);
@@ -174,18 +181,9 @@ function RequestCard({ request, onResubmit }: { request: WithId<VerificationRequ
 
 export default function MyRequestsPage() {
   const { user, isUserLoading } = useAuth();
-  const db = getFirestore(app);
-
-  const userRequestsQuery = useMemo(() => {
-      if (!user) return null;
-      return query(
-          collection(db, 'verificationRequests'),
-          where('userId', '==', user.uid),
-          orderBy('createdAt', 'desc')
-      );
-  }, [db, user]);
-
-  const { data: allRequests, isLoading: isRequestsLoading, error, forceRefetch } = useCollection<VerificationRequest>(userRequestsQuery);
+  const [allRequests, setAllRequests] = useState<VerificationRequest[] | null>(null);
+  const [isRequestsLoading, setIsRequestsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const activeRequests = useMemo(() => {
     if (!allRequests) return [];
@@ -194,14 +192,45 @@ export default function MyRequestsPage() {
   
   const approvedRequests = useMemo(() => {
     if (!allRequests) return [];
-    return allRequests?.filter(r => r.status === 'approved') ?? [];
+    return allRequests.filter(
+      (r): r is ApprovedVerificationRequest => r.status === 'approved'
+    );
   }, [allRequests]);
 
-  const handleResubmitSuccess = useCallback(() => {
-    if (forceRefetch) {
-      forceRefetch();
+  const fetchRequests = useCallback(async () => {
+    setIsRequestsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/verification-requests', { method: 'GET' });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        setError(payload?.message || 'Failed to load requests.');
+        setAllRequests([]);
+      } else {
+        const data = await res.json();
+        setAllRequests(data.requests || []);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch verification requests:', err);
+      setError('Failed to load requests.');
+      setAllRequests([]);
+    } finally {
+      setIsRequestsLoading(false);
     }
-  }, [forceRefetch]);
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setAllRequests([]);
+      setIsRequestsLoading(false);
+      return;
+    }
+    fetchRequests();
+  }, [user, fetchRequests]);
+
+  const handleResubmitSuccess = useCallback(() => {
+    fetchRequests();
+  }, [fetchRequests]);
 
 
   const showLoading = isUserLoading || (user && isRequestsLoading);

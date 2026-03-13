@@ -1,8 +1,7 @@
 
 'use client';
 
-import { getAuth, signOut as firebaseSignOut } from 'firebase/auth';
-import { app } from '@/firebase/client';
+import { useRouter } from 'next/navigation';
 import { LogOut } from 'lucide-react';
 import { Logo } from './icons';
 import { Button } from './ui/button';
@@ -12,19 +11,27 @@ import { ThemeToggle } from './theme-toggle';
 
 export default function Header() {
   const { user } = useAuth();
+  const router = useRouter();
 
   const handleSignOut = async () => {
-    const auth = getAuth(app);
     try {
-        await firebaseSignOut(auth);
+      const res = await fetch('/api/auth/logout', {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        console.error('Error signing out');
+      }
     } catch (error) {
-        console.error("Error signing out: ", error);
+      console.error('Error signing out: ', error);
+    } finally {
+      router.push('/');
+      router.refresh();
     }
   };
   
   const getUsername = () => {
       if (!user) return '';
-      if (user.displayName) return user.displayName;
+      if (user.username) return user.username;
       return user.email?.split('@')[0] || 'User';
   }
 

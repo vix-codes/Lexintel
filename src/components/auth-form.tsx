@@ -4,9 +4,6 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { getFirestore, doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { app } from '@/firebase/client';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -27,15 +24,9 @@ function FormSubmitButton({ children, isSubmitting, ...props }: ButtonProps & { 
   );
 }
 
-function getUsernameFromEmail(email: string) {
-    return email.split('@')[0];
-}
-
 type AuthFormProps = {
   mode: 'login' | 'signup';
 }
-
-const LAWYER_EMAIL = 'lawyer@lexintel.com';
 
 export function AuthForm({ mode }: AuthFormProps) {
   const { toast } = useToast();
@@ -50,67 +41,60 @@ export function AuthForm({ mode }: AuthFormProps) {
   });
 
   const handleAuthAction = async (data: z.infer<typeof authSchema>) => {
-    const auth = getAuth(app);
     const { email, password } = data;
 
     try {
-      if (mode === 'signup') {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        const db = getFirestore(app);
+      const endpoint = mode === 'signup' ? '/api/auth/signup' : '/api/auth/login';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
 
-        const userRef = doc(db, 'users', user.uid);
-        await setDoc(userRef, {
-            email: user.email,
-            username: getUsernameFromEmail(user.email!),
-            createdAt: serverTimestamp(),
-        });
+      const payload = await res.json();
+
+      if (!res.ok) {
+        const description =
+          payload?.message ??
+          (mode === 'signup'
+            ? 'Failed to create account. Please try again.'
+            : 'Incorrect email or password. Please try again.');
+
         toast({
-            title: 'Account Created',
-            description: "You've been successfully signed up!",
+          variant: 'destructive',
+          title: 'Authentication Failed',
+          description,
         });
-        // No redirect here, AuthProvider will handle it
-      } else { // Login
-        await signInWithEmailAndPassword(auth, email, password);
-        
-        if (email === LAWYER_EMAIL) {
-          toast({
-            title: 'Lawyer Portal Access',
-            description: "Welcome back, counselor.",
-          });
-        } else {
-          toast({
-            title: 'Signed In',
-            description: "Welcome back!",
-          });
-        }
-        // No redirect here, AuthProvider will handle it
+        return;
       }
-    } catch (error: any) {
-      let description = 'An unexpected error occurred.';
-      if (error.code) {
-        switch (error.code) {
-            case 'auth/user-not-found':
-            case 'auth/invalid-credential':
-                description = 'Incorrect email or password. Please try again.';
-                break;
-            case 'auth/wrong-password':
-                description = 'Incorrect password. Please try again.';
-                break;
-            case 'auth/email-already-in-use':
-                description = 'This email is already in use. Please log in.';
-                break;
-            case 'auth/network-request-failed':
-                description = 'Network error. Please check your connection and authorized domains in Firebase.';
-                break;
-            default:
-                description = error.message;
-        }
+
+      if (mode === 'signup') {
+        toast({
+          title: 'Account Created',
+          description: "You've been successfully signed up!",
+        });
+      } else {
+        toast({
+          title: 'Signed In',
+          description: 'Welcome back!',
+        });
       }
+
+      const isLawyer =
+        payload?.user?.role === 'LAWYER' ||
+        payload?.user?.email === 'lawyer@lexintel.com';
+
+      if (isLawyer) {
+        router.push('/lawyer-panel');
+      } else {
+        router.push('/');
+      }
+    } catch (error) {
+      console.error('Auth error:', error);
       toast({
         variant: 'destructive',
         title: 'Authentication Failed',
-        description: description,
+        description: 'An unexpected error occurred.',
       });
     }
   };

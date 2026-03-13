@@ -10,20 +10,19 @@ import {
 import { Badge } from "./ui/badge";
 import { formatDistanceToNow } from "date-fns";
 import { documentTemplates } from "@/lib/data";
-import type { WithId } from "@/firebase/firestore/use-collection";
 import { cn } from "@/lib/utils";
 
 type VerificationRequest = {
+  id: string;
+  userId?: string;
   documentType: string;
   status: 'approved' | 'rejected';
   updatedAt: { seconds: number; nanoseconds: number; };
   type?: 'document' | 'lawyer';
-  // This is a partial type; other properties exist on the actual object.
-  [key: string]: any;
 };
 
 interface PreviouslyApprovedRequestsProps {
-  requests: WithId<VerificationRequest>[];
+  requests: VerificationRequest[];
   profiles?: Record<string, string> | null;
 }
 

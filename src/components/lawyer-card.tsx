@@ -10,16 +10,16 @@ export type LawyerProfile = {
   id: string;
   name: string;
   email: string;
-  phone: string;
-  location: { city: string; state: string };
+  phone?: string;
+  location?: { city?: string; state?: string };
   specializations: string[];
-  experience: number;
-  description: string;
+  experience?: number;
+  description?: string;
   rating: number;
   isVerified: boolean;
-  enrollmentNumber: string;
-  stateBarCouncil: string;
-  source: 'internal';
+  enrollmentNumber?: string;
+  stateBarCouncil?: string;
+  source?: 'internal' | 'google';
 };
 
 // This type is no longer needed but kept for compatibility just in case.
@@ -68,7 +68,7 @@ export function LawyerCard({ lawyer }: LawyerCardProps) {
           <div className="flex-1">
             <h3 className="font-semibold text-lg flex items-center gap-2 text-foreground">
               {lawyer.name}
-              {lawyer.isVerified && <ShieldCheck className="h-5 w-5 text-accent fill-current" title='Verified Professional' />}
+              {lawyer.isVerified && <ShieldCheck className="h-5 w-5 text-accent fill-current" />}
             </h3>
             {lawyer.specializations && lawyer.specializations.length > 0 && (
               <p className="text-secondary text-sm font-medium">{lawyer.specializations[0]}</p>
@@ -92,7 +92,7 @@ export function LawyerCard({ lawyer }: LawyerCardProps) {
           </div>
           <div className="flex items-center gap-2 text-muted-foreground">
             <Phone className="h-4 w-4" />
-            <span>{lawyer.phone}</span>
+            <span>{lawyer.phone || 'Not provided'}</span>
           </div>
         </div>
         

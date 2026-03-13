@@ -1,72 +1,24 @@
 
 'use server';
 
-import { createServerClient } from '@/firebase/server-client';
-import { getFirestore as getAdminFirestore, FieldValue } from 'firebase-admin/firestore';
-import type { App } from 'firebase-admin/app';
+import type { Prisma } from '@prisma/client';
+import { prisma } from '@/lib/db';
+import { getCurrentUser } from '@/lib/auth';
 
-// Initialize Admin SDK once at the module level.
-let adminApp: App | null = null;
-let adminDb: ReturnType<typeof getAdminFirestore> | null = null;
-let initializationError: string | null = null;
+const LAWYER_EMAIL = 'lawyer@lexintel.com';
 
-// This top-level try/catch block runs ONCE when the module is first loaded.
-try {
-  // createServerClient() now intelligently handles the preview environment.
-  const result = createServerClient();
-  if (result.app) {
-    adminApp = result.app;
-    adminDb = getAdminFirestore(adminApp);
-  } else {
-    // If createServerClient returns an error, we store it.
-    initializationError = result.error;
+async function requireLawyer() {
+  const user = await getCurrentUser();
+  if (!user) {
+    throw new Error('Unauthorized');
   }
-} catch (e: any) {
-    // This is a fallback for any unexpected catastrophic failure during initialization.
-    console.error("CRITICAL: Failed to initialize Firebase Admin SDK in admin-actions.ts", e);
-    initializationError = e.message || 'A critical server error occurred during initialization.';
+
+  if (user.role !== 'LAWYER' && user.email !== LAWYER_EMAIL) {
+    throw new Error('Forbidden');
+  }
 }
 
-
-/**
- * A higher-order function that wraps an admin action.
- * It checks for the Admin SDK initialization status before executing the action.
- * If the SDK is not available, it returns a consistent error object, preventing crashes.
- *
- * @param fn The admin action function to wrap.
- * @returns An async function that is safe to call from components.
- */
-function withAdmin<T extends (...args: any[]) => Promise<any>>(
-  fn: (db: ReturnType<typeof getAdminFirestore>, ...args: Parameters<T>) => ReturnType<T>
-) {
-  return async function(...args: Parameters<T>): Promise<Awaited<ReturnType<T>>> {
-    // This guard is the most important part. It runs on every call.
-    // If initializationError was set at the module level, this check fails.
-    if (initializationError || !adminDb) {
-      console.warn(`Admin action blocked: ${initializationError}`);
-
-      const funcName = fn.name || '';
-      // For functions that are expected to return an array (like fetching data),
-      // return an empty array on failure to prevent UI crashes.
-      if (funcName.toLowerCase().includes('get') && (funcName.toLowerCase().includes('requests') || funcName.toLowerCase().includes('profiles'))) {
-         return [] as Awaited<ReturnType<T>>;
-      }
-
-      // For other functions (like mutations), return a standard error object.
-      // Use the stored initializationError as the message.
-      return { success: false, error: initializationError } as Awaited<ReturnType<T>>;
-    }
-    // If the check passes, execute the original function with the db instance.
-    return fn(adminDb, ...args);
-  };
-}
-
-
-// --- EXPORTED ADMIN ACTIONS ---
-// Each action is now safely wrapped with the `withAdmin` guard.
-
-export const addLawyerComment = withAdmin(async (
-  db,
+export const addLawyerComment = async (
   requestId: string,
   commentText: string
 ): Promise<{ success: boolean; error?: string }> => {
@@ -75,23 +27,34 @@ export const addLawyerComment = withAdmin(async (
   }
 
   try {
-    const requestRef = db.collection('verificationRequests').doc(requestId);
+    await requireLawyer();
+
     const newComment = {
       text: commentText,
       timestamp: new Date()
     };
-    await requestRef.update({
-      status: 'reviewed',
-      lawyerComments: FieldValue.arrayUnion(newComment),
-      updatedAt: FieldValue.serverTimestamp(),
-      lawyerNotification: 'Your draft has been reviewed.'
+
+    const existing = await prisma.verificationRequest.findUnique({
+      where: { id: requestId },
+      select: { lawyerComments: true },
+    });
+
+    const currentComments = (existing?.lawyerComments as LawyerComment[] | null) ?? [];
+
+    await prisma.verificationRequest.update({
+      where: { id: requestId },
+      data: {
+        status: 'reviewed',
+        lawyerComments: [...currentComments, newComment],
+        lawyerNotification: 'Your draft has been reviewed.',
+      },
     });
     return { success: true };
   } catch (error: any) {
     console.error('Error adding lawyer comment:', error);
     return { success: false, error: error.message || 'Failed to add comment.' };
   }
-});
+};
 
 
 interface ApproveRequestData {
@@ -99,11 +62,10 @@ interface ApproveRequestData {
   type: 'document' | 'lawyer';
   documentType: string;
   draftContent: string;
-  formInputs: Record<string, any>;
+  formInputs: Record<string, unknown>;
 }
 
-export const approveRequest = withAdmin(async (
-  db,
+export const approveRequest = async (
   requestId: string,
   requestData: ApproveRequestData
 ): Promise<{ success: boolean; error?: string }> => {
@@ -111,49 +73,82 @@ export const approveRequest = withAdmin(async (
     return { success: false, error: 'Request ID and data are required.' };
   }
   try {
-    const requestRef = db.collection('verificationRequests').doc(requestId);
+    await requireLawyer();
+
     if (requestData.type === 'lawyer' && requestData.userId && requestData.formInputs) {
-      const lawyerRef = db.collection('lawyers').doc(requestData.userId);
-      const profileData = requestData.formInputs;
-      await lawyerRef.set({
-        id: requestData.userId,
-        email: profileData.email,
-        name: profileData.name,
-        phone: profileData.phone,
-        enrollmentNumber: profileData.enrollmentNumber,
-        location: profileData.location ?? { city: "Unknown", state: "Unknown" },
-        specializations: profileData.specializations,
-        experience: profileData.experience,
-        description: profileData.description,
-        isVerified: true,
-        rating: 4.0 + Math.random(),
-        createdAt: FieldValue.serverTimestamp(),
-        source: 'internal'
-      }, { merge: true });
+      const profileData = requestData.formInputs as {
+        email?: string;
+        name?: string;
+        phone?: string;
+        enrollmentNumber?: string;
+        location?: { city?: string; state?: string };
+        specializations?: string[];
+        experience?: number;
+        description?: string;
+      };
+      await prisma.lawyerProfile.upsert({
+        where: { userId: requestData.userId },
+        create: {
+          userId: requestData.userId,
+          email: profileData.email ?? '',
+          name: profileData.name ?? '',
+          phone: profileData.phone,
+          enrollmentNumber: profileData.enrollmentNumber,
+          locationCity: profileData.location?.city ?? 'Unknown',
+          locationState: profileData.location?.state ?? 'Unknown',
+          specializations: Array.isArray(profileData.specializations)
+            ? profileData.specializations
+            : [],
+          experienceYears: profileData.experience,
+          description: profileData.description,
+          isVerified: true,
+          rating: 4.5,
+          source: 'internal',
+        },
+        update: {
+          email: profileData.email ?? '',
+          name: profileData.name ?? '',
+          phone: profileData.phone,
+          enrollmentNumber: profileData.enrollmentNumber,
+          locationCity: profileData.location?.city ?? 'Unknown',
+          locationState: profileData.location?.state ?? 'Unknown',
+          specializations: Array.isArray(profileData.specializations)
+            ? profileData.specializations
+            : [],
+          experienceYears: profileData.experience,
+          description: profileData.description,
+          isVerified: true,
+          rating: 4.5,
+          source: 'internal',
+        },
+      });
     } else if (requestData.type === 'document' && requestData.userId) {
-      const approvedDraftsRef = db.collection('users').doc(requestData.userId).collection('approvedDrafts');
-      await approvedDraftsRef.add({
-        originalRequestId: requestId,
-        documentType: requestData.documentType,
-        approvedContent: requestData.draftContent,
-        approvedAt: FieldValue.serverTimestamp(),
+      await prisma.approvedDraft.create({
+        data: {
+          userId: requestData.userId,
+          originalRequestId: requestId,
+          documentType: requestData.documentType,
+          approvedContent: requestData.draftContent,
+        },
       });
     }
-    await requestRef.update({
-      status: 'approved',
-      updatedAt: FieldValue.serverTimestamp(),
-      lawyerNotification: `Your ${requestData.type ?? 'draft'} has been approved.`
+
+    await prisma.verificationRequest.update({
+      where: { id: requestId },
+      data: {
+        status: 'approved',
+        lawyerNotification: `Your ${requestData.type ?? 'draft'} has been approved.`,
+      },
     });
     return { success: true };
   } catch (error: any) {
     console.error('Error approving request:', error);
     return { success: false, error: error.message || 'Failed to approve request.' };
   }
-});
+};
 
 
-export const rejectRequest = withAdmin(async (
-  db,
+export const rejectRequest = async (
   requestId: string,
   reason: string
 ): Promise<{ success: boolean; error?: string }> => {
@@ -164,72 +159,100 @@ export const rejectRequest = withAdmin(async (
   const finalReason = reason.trim() || 'Your profile verification has been rejected due to incomplete or invalid information.';
 
   try {
-    const requestRef = db.collection('verificationRequests').doc(requestId);
-    await requestRef.update({
-      status: 'rejected',
-      updatedAt: FieldValue.serverTimestamp(),
-      lawyerNotification: finalReason,
+    await requireLawyer();
+
+    await prisma.verificationRequest.update({
+      where: { id: requestId },
+      data: {
+        status: 'rejected',
+        lawyerNotification: finalReason,
+      },
     });
     return { success: true };
   } catch (error: any) {
     console.error('Error rejecting request:', error);
     return { success: false, error: error.message || 'Failed to reject request.' };
   }
-});
+};
 
 
-export const getUserRequests = withAdmin(async(db, userId: string): Promise<any[]> => {
+export const getUserRequests = async (userId: string): Promise<SerializedVerificationRequest[]> => {
   if (!userId) return [];
   try {
-    const requestsRef = db.collection('verificationRequests');
-    const q = requestsRef.where('userId', '==', userId).orderBy('createdAt', 'desc');
-    const snapshot = await q.get();
-    if (snapshot.empty) return [];
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
-        updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
-        lawyerComments: data.lawyerComments?.map((c: any) => ({
-            ...c,
-            timestamp: c.timestamp?.toDate ? c.timestamp.toDate().toISOString() : new Date().toISOString(),
-        })) ?? [],
-      };
+    const requests = await prisma.verificationRequest.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
     });
+    return requests.map((r: VerificationRequestRow) => ({
+      id: r.id,
+      userId: r.userId,
+      documentType: r.documentType,
+      status: r.status,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+      draftContent: r.draftContent,
+      formInputs: r.formInputs,
+      lawyerComments: r.lawyerComments || [],
+      lawyerNotification: r.lawyerNotification,
+      type: r.type,
+    }));
   } catch (err) {
     console.error('Error fetching user requests:', err);
     return [];
   }
-});
+};
 
-export const getUserProfiles = withAdmin(async (db, userIds: string[]): Promise<Record<string, string>> => {
+export const getUserProfiles = async (userIds: string[]): Promise<Record<string, string>> => {
   const profiles: Record<string, string> = {};
   if (!userIds || userIds.length === 0) {
     return profiles;
   }
   try {
-    const usersRef = db.collection('users');
-    // Firestore 'in' queries are limited to 30 elements. 
-    // We don't expect more here, but in a real-world scenario, this would need chunking.
-    const q = usersRef.where('__name__', 'in', userIds);
-    const snapshot = await q.get();
-    
-    if (snapshot.empty) {
-      return profiles;
-    }
+    await requireLawyer();
 
-    snapshot.docs.forEach(doc => {
-      profiles[doc.id] = doc.data()?.username || 'Unknown User';
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, username: true },
+    });
+
+    users.forEach((u) => {
+      profiles[u.id] = u.username || 'Unknown User';
     });
     return profiles;
   } catch (err) {
     console.error('Error fetching user profiles:', err);
-    // Return an empty object on error to ensure a consistent return type.
     return profiles;
   }
-});
+};
+type LawyerComment = {
+  text: string;
+  timestamp: Date;
+};
 
-// This is an alias for withAdmin, kept for semantic clarity if needed, but they do the same thing.
-const withAdminSafe = withAdmin;
+type SerializedVerificationRequest = {
+  id: string;
+  userId: string;
+  documentType: string;
+  status: 'pending' | 'reviewed' | 'approved' | 'rejected';
+  createdAt: string;
+  updatedAt: string;
+  draftContent: string;
+  formInputs: Prisma.JsonValue;
+  lawyerComments: Prisma.JsonValue;
+  lawyerNotification: string;
+  type: 'document' | 'lawyer';
+};
+
+type VerificationRequestRow = {
+  id: string;
+  userId: string;
+  documentType: string;
+  status: 'pending' | 'reviewed' | 'approved' | 'rejected';
+  createdAt: Date;
+  updatedAt: Date;
+  draftContent: string;
+  formInputs: Prisma.JsonValue;
+  lawyerComments: Prisma.JsonValue | null;
+  lawyerNotification: string;
+  type: 'document' | 'lawyer';
+};

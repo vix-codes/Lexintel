@@ -4,9 +4,7 @@
 import { generateLegalDraft } from '@/ai/flows/generate-legal-draft';
 import { answerLegalQuery, type LegalQueryOutput } from '@/ai/flows/answer-legal-query';
 import { documentTemplates } from '@/lib/data';
-
-// ADMIN FIREBASE (CORRECT FOR SERVER ACTIONS)
-import { getAdminFirestore } from '@/firebase/server-client';
+import { prisma } from '@/lib/db';
 
 
 /* ----------------------------
@@ -34,19 +32,19 @@ export const generateDraft = async (
 
     const draftContent = result.legalDraft;
 
-    // Log activity (admin SDK)
     if (userId) {
-      const db = getAdminFirestore();
-      await db
-        .collection("users")
-        .doc(userId)
-        .collection("activities")
-        .add({
-          action: "Generated",
-          subject: documentTemplates.find(t => t.value === docType)?.label ?? "document",
-          timestamp: new Date(),
+      const subject =
+        documentTemplates.find((t) => t.value === docType)?.label ?? 'document';
+      await prisma.activity.create({
+        data: {
           userId,
-        });
+          action: 'Generated',
+          subject,
+          metadata: {
+            documentType: docType,
+          },
+        },
+      });
     }
 
     return { draft: draftContent };
@@ -96,19 +94,17 @@ export async function requestVerification(
   }
 
   try {
-    const db = getAdminFirestore();
-
-    await db.collection("verificationRequests").add({
-      userId,
-      documentType,
-      draftContent,
-      formInputs,
-      status: "pending",
-      lawyerComments: [],
-      lawyerNotification: "",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      type: "document",
+    await prisma.verificationRequest.create({
+      data: {
+        userId,
+        type: 'document',
+        documentType,
+        draftContent,
+        formInputs,
+        status: 'pending',
+        lawyerComments: [],
+        lawyerNotification: '',
+      },
     });
 
     return { success: true };
@@ -130,28 +126,26 @@ export async function requestLawyerVerification(
   if (!userId) return { success: false, error: "Missing user ID." };
 
   try {
-    const db = getAdminFirestore();
-
-    await db.collection("verificationRequests").add({
-      userId,
-      documentType: "Lawyer Profile",
-      draftContent: `
+    await prisma.verificationRequest.create({
+      data: {
+        userId,
+        type: 'lawyer',
+        documentType: 'Lawyer Profile',
+        draftContent: `
 Verification request for ${profileData.name}.
 Email: ${profileData.email}
 Phone: ${profileData.phone}
 Enrollment ID: ${profileData.enrollmentNumber}
-Location: ${profileData.location.city}, ${profileData.location.state}
-Specializations: ${profileData.specializations.join(", ")}
+Location: ${profileData.location?.city}, ${profileData.location?.state}
+Specializations: ${Array.isArray(profileData.specializations) ? profileData.specializations.join(", ") : ""}
 Experience: ${profileData.experience} years
 Bio: ${profileData.description}
-      `.trim(),
-      formInputs: profileData,
-      status: "pending",
-      lawyerComments: [],
-      lawyerNotification: "",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      type: "lawyer",
+        `.trim(),
+        formInputs: profileData,
+        status: 'pending',
+        lawyerComments: [],
+        lawyerNotification: '',
+      },
     });
 
     return { success: true };

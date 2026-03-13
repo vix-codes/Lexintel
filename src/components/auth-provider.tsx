@@ -3,13 +3,20 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState, createContext, useContext, type ReactNode } from 'react';
-import { getAuth, onAuthStateChanged, signOut, type User } from 'firebase/auth';
-import { app } from '@/firebase/client';
 import { Skeleton } from './ui/skeleton';
 import { Logo } from './icons';
-import { FirebaseErrorListener } from './FirebaseErrorListener';
 
-const AuthContext = createContext<{ user: User | null; isUserLoading: boolean }>({ user: null, isUserLoading: true });
+type AuthUser = {
+  id: string;
+  email: string;
+  username: string;
+  role: 'USER' | 'LAWYER' | 'ADMIN';
+};
+
+const AuthContext = createContext<{ user: AuthUser | null; isUserLoading: boolean }>({
+  user: null,
+  isUserLoading: true,
+});
 
 const authRequiredRoutes = ['/dashboard', '/lawyer-panel', '/my-requests'];
 const lawyerOnlyRoutes = ['/lawyer-panel'];
@@ -34,25 +41,52 @@ function LoadingScreen() {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [isUserLoading, setIsUserLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
-  const auth = getAuth(app);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setIsUserLoading(false);
-    });
+    let isMounted = true;
 
-    return () => unsubscribe();
-  }, [auth]);
+    async function loadCurrentUser() {
+      try {
+        const res = await fetch('/api/auth/me', { method: 'GET' });
+        if (!isMounted) return;
+
+        if (!res.ok) {
+          setUser(null);
+          setIsUserLoading(false);
+          return;
+        }
+
+        const data = await res.json();
+        if (data?.user) {
+          setUser(data.user);
+        } else {
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('Failed to load current user:', error);
+        setUser(null);
+      } finally {
+        if (isMounted) {
+          setIsUserLoading(false);
+        }
+      }
+    }
+
+    loadCurrentUser();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (isUserLoading) return;
 
-    const isLawyer = user?.email === LAWYER_EMAIL;
+    const isLawyer = user?.email === LAWYER_EMAIL || user?.role === 'LAWYER';
     const pathIsAuthRequired = authRequiredRoutes.some(route => pathname.startsWith(route));
     const pathIsLawyerOnly = lawyerOnlyRoutes.some(route => pathname.startsWith(route));
     const pathIsPublicOnly = publicOnlyRoutes.some(route => pathname.startsWith(route));
@@ -91,7 +125,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{ user, isUserLoading }}>
       {children}
-      <FirebaseErrorListener />
     </AuthContext.Provider>
   );
 }

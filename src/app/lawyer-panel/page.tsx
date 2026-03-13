@@ -2,9 +2,6 @@
 'use client';
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
-import { collection, query, orderBy, getFirestore } from 'firebase/firestore';
-import { app } from '@/firebase/client';
-import { useCollection, type WithId } from '@/firebase/firestore/use-collection';
 import Header from '@/components/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -19,15 +16,23 @@ import { documentTemplates } from '@/lib/data';
 import { cn } from '@/lib/utils';
 import { getUserProfiles } from '../admin-actions';
 
+type TimestampLike = { seconds: number; nanoseconds: number };
+
 type VerificationRequest = {
+  id: string;
   userId: string;
   documentType: string;
   status: 'pending' | 'reviewed' | 'approved' | 'rejected';
-  createdAt: { seconds: number; nanoseconds: number };
+  createdAt: TimestampLike;
+  updatedAt: TimestampLike;
   draftContent: string;
   formInputs: Record<string, any>;
-  lawyerComments: { text: string; timestamp: { seconds: number } }[];
+  lawyerComments: { text: string; timestamp: TimestampLike }[];
   type?: 'document' | 'lawyer';
+};
+
+type CompletedVerificationRequest = VerificationRequest & {
+  status: 'approved' | 'rejected';
 };
 
 const statusConfig = {
@@ -43,9 +48,17 @@ function getDocumentLabel(docValue: string) {
     return template ? template.label : docValue.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
-function VerificationRequestCard({ request, username, onActionComplete }: { request: WithId<VerificationRequest>, username: string, onActionComplete: () => void }) {
+function VerificationRequestCard({
+  request,
+  username,
+  onActionComplete,
+}: {
+  request: VerificationRequest;
+  username: string;
+  onActionComplete: () => void;
+}) {
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-    const statusInfo = statusConfig[request.status];
+    const statusInfo = statusConfig[request.status as keyof typeof statusConfig];
     const documentLabel = getDocumentLabel(request.documentType);
 
     return (
@@ -85,26 +98,40 @@ function VerificationRequestCard({ request, username, onActionComplete }: { requ
 
 export default function LawyerPanelPage() {
   const { user, isUserLoading } = useAuth();
-  const db = getFirestore(app);
   const [userProfiles, setUserProfiles] = useState<Record<string, string>>({});
+  const [allRequestsData, setAllRequestsData] = useState<VerificationRequest[] | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   
-  const allRequestsQuery = useMemo(() => {
+  const fetchRequests = useCallback(async () => {
     if (!user || user.email !== 'lawyer@lexintel.com') {
-        return null;
+      setAllRequestsData([]);
+      return;
     }
-    return query(
-        collection(db, 'verificationRequests'), 
-        orderBy('createdAt', 'desc')
-    );
-  }, [db, user]);
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/admin/verification-requests', { method: 'GET' });
+      if (!res.ok) {
+        console.error('Failed to load verification requests');
+        setAllRequestsData([]);
+      } else {
+        const data = await res.json();
+        setAllRequestsData(data.requests || []);
+      }
+    } catch (err) {
+      console.error('Failed to load verification requests', err);
+      setAllRequestsData([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
 
-  const { data: allRequestsData, isLoading, error, forceRefetch } = useCollection<VerificationRequest>(allRequestsQuery);
+  useEffect(() => {
+    fetchRequests();
+  }, [fetchRequests]);
 
   const handleActionComplete = useCallback(() => {
-      if(forceRefetch) {
-        forceRefetch();
-      }
-  }, [forceRefetch]);
+    fetchRequests();
+  }, [fetchRequests]);
 
   useEffect(() => {
     async function fetchProfiles() {
@@ -137,7 +164,10 @@ export default function LawyerPanelPage() {
 
   const completedRequests = useMemo(() => {
     if (!allRequestsData) return [];
-    return allRequestsData.filter(r => r.status === 'approved' || r.status === 'rejected');
+    return allRequestsData.filter(
+      (r): r is CompletedVerificationRequest =>
+        r.status === 'approved' || r.status === 'rejected'
+    );
   }, [allRequestsData]);
 
   

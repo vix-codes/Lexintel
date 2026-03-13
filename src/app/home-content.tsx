@@ -8,10 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Search, ShieldQuestion, HelpCircle, Briefcase, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth-provider';
-import { useDoc } from '@/firebase/firestore/use-doc';
-import { doc, getFirestore } from 'firebase/firestore';
-import { app } from '@/firebase/client';
-import { useMemo } from 'react';
 
 const FIND_LAWYER_URL = '/find-lawyer';
 const MY_REQUESTS_URL = '/my-requests';
@@ -19,14 +15,6 @@ const FAQ_URL = '/faq';
 
 function LawyerDashboardLinkCard() {
   const { user } = useAuth();
-
-  const lawyerDocRef = useMemo(() => {
-    if (!user) return null;
-    const db = getFirestore(app);
-    return doc(db, 'lawyers', user.uid);
-  }, [user]);
-
-  const { data: lawyerData, isLoading } = useDoc(lawyerDocRef);
 
   // Render this card only if the user is logged in.
   // It gives any user the option to become a lawyer.

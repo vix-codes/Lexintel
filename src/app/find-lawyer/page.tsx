@@ -10,9 +10,6 @@ import Header from '@/components/header';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LawyerCard } from '@/components/lawyer-card';
 import { useToast } from '@/hooks/use-toast';
-import { useCollection } from '@/firebase/firestore/use-collection';
-import { collection, getFirestore } from 'firebase/firestore';
-import { app } from '@/firebase/client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -26,9 +23,30 @@ export default function FindLawyerPage() {
   const [selectedState, setSelectedState] = useState('');
   const [selectedCity, setSelectedCity] = useState('');
 
-  const db = getFirestore(app);
-  const lawyersRef = useMemo(() => collection(db, 'lawyers'), [db]);
-  const { data: firestoreLawyers, isLoading: isLoadingFirestore } = useCollection<LawyerProfile>(lawyersRef);
+  const [firestoreLawyers, setFirestoreLawyers] = useState<LawyerProfile[] | null>(null);
+  const [isLoadingFirestore, setIsLoadingFirestore] = useState(false);
+
+  useEffect(() => {
+    async function loadLawyers() {
+      setIsLoadingFirestore(true);
+      try {
+        const res = await fetch('/api/lawyers', { method: 'GET' });
+        if (!res.ok) {
+          setFirestoreLawyers([]);
+          return;
+        }
+        const data = await res.json();
+        setFirestoreLawyers(data.lawyers || []);
+      } catch (error) {
+        console.error('Failed to load lawyers:', error);
+        setFirestoreLawyers([]);
+      } finally {
+        setIsLoadingFirestore(false);
+      }
+    }
+
+    loadLawyers();
+  }, []);
 
   // Combine mock data and firestore data, ensuring no duplicates
   const allLawyers = useMemo(() => {

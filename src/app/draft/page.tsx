@@ -91,7 +91,7 @@ export default function DraftPage() {
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground p-4 lg:p-6 space-y-6">
       <form action={formAction}>
-        {user && <input type="hidden" name="userId" value={user.uid} />}
+        {user && <input type="hidden" name="userId" value={user.id} />}
         <Card className="bg-card border-border shadow-sm">
           <CardHeader>
             <CardTitle className="font-headline flex items-center gap-2">
@@ -165,7 +165,7 @@ export default function DraftPage() {
             {user && state?.draft && !pending && (
                 <CardFooter>
                     <VerificationButton 
-                        userId={user.uid}
+                        userId={user.id}
                         documentType={selectedTemplateValue!}
                         draftContent={state.draft}
                         formInputs={formValues}

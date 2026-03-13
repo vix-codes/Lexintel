@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 
 export function GET() {
   return NextResponse.json({
-    PROJECT_ID: process.env.FIREBASE_PROJECT_ID ?? 'missing',
-    CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL ?? 'missing',
-    PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY ? 'loaded' : 'missing'
+    DATABASE_URL: process.env.DATABASE_URL ? 'loaded' : 'missing',
+    SESSION_SECRET: process.env.SESSION_SECRET ? 'loaded' : 'missing',
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY ? 'loaded' : 'missing',
   });
 }
 
