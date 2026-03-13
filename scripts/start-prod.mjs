@@ -35,6 +35,8 @@ function run(command, args) {
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
+  const port = process.env.PORT ?? '3000';
+  const hostname = process.env.HOSTNAME ?? '0.0.0.0';
 
   if (!databaseUrl) {
     console.error('DATABASE_URL is missing. Set it in your deployment environment before starting the app.');
@@ -60,8 +62,8 @@ async function main() {
   console.log('Applying Prisma migrations...');
   await run('npx', ['prisma', 'migrate', 'deploy']);
 
-  console.log('Starting Next.js server...');
-  await run('npx', ['next', 'start']);
+  console.log(`Starting Next.js server on ${hostname}:${port}...`);
+  await run('npx', ['next', 'start', '-p', port, '-H', hostname]);
 }
 
 main().catch((error) => {

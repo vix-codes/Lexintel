@@ -67,6 +67,8 @@ Recommended target:
 - AWS App Runner for the app
 - AWS RDS PostgreSQL for the database
 
+This repo also supports a plain Ubuntu or EC2 deploy with PM2.
+
 Required app environment variables:
 
 - `DATABASE_URL`
@@ -84,6 +86,48 @@ Notes:
 - Make sure the App Runner service can reach the RDS instance.
 - Make sure the RDS security group allows inbound traffic from the app path you are using.
 - Do not commit real secrets into the repository.
+
+## Ubuntu / EC2 Deployment
+
+On a fresh Ubuntu server:
+
+```bash
+sudo apt update
+sudo apt install nodejs npm git -y
+git clone <your-repo-url>
+cd <your-repo-folder>
+npm install
+npm run build
+```
+
+Create `.env` with at least:
+
+```bash
+DATABASE_URL=postgresql://postgres:your_url_encoded_password@your-rds-endpoint:5432/your_database
+SESSION_SECRET=replace-with-a-long-random-secret
+GEMINI_API_KEY=replace-with-your-gemini-api-key
+```
+
+Start once:
+
+```bash
+npm start
+```
+
+Keep it running with PM2:
+
+```bash
+sudo npm install -g pm2
+pm2 start ecosystem.config.cjs
+pm2 save
+```
+
+The production startup flow will:
+
+1. Validate `DATABASE_URL`
+2. Check PostgreSQL connectivity
+3. Run `prisma migrate deploy`
+4. Start Next.js on `0.0.0.0:3000`
 
 ## Scripts
 
