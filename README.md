@@ -126,7 +126,7 @@ The production startup flow will:
 
 1. Validate `DATABASE_URL`
 2. Check PostgreSQL connectivity
-3. Run `prisma migrate deploy`
+3. Run `prisma migrate deploy.`
 4. Start Next.js on `0.0.0.0:3000`
 
 ## Scripts
