@@ -1,6 +1,6 @@
 # Lexintel
 
-Lexintel is a Next.js legal-assist app with Prisma, PostgreSQL, and Genkit.
+Lexintel is a Next.js legal-assist app with Prisma, PostgreSQL, and Genkit..
 
 ## Stack
 
